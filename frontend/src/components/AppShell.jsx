@@ -1,6 +1,11 @@
+import { useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import toast from "react-hot-toast";
 import { Plane, PlaneTakeoff } from "lucide-react";
+import api from "../api/client";
 import BottomNav from "./BottomNav";
+import { useOfflineQueueLength } from "../hooks/useOfflineQueueLength";
+import { flushOfflineFlightQueue } from "../utils/offlineFlightQueue";
 
 const menus = [
   { to: "/flights", label: "Flights" },
@@ -11,6 +16,19 @@ const menus = [
 
 export default function AppShell({ children }) {
   const location = useLocation();
+  const pendingOfflineFlights = useOfflineQueueLength();
+
+  useEffect(() => {
+    const sync = async () => {
+      const synced = await flushOfflineFlightQueue(api);
+      if (synced > 0) {
+        toast.success(`Synced ${synced} flight log(s) to the server.`);
+      }
+    };
+    window.addEventListener("online", sync);
+    void sync();
+    return () => window.removeEventListener("online", sync);
+  }, []);
 
   return (
     <div className="min-h-screen bg-bg-main text-slate-100">
@@ -45,6 +63,15 @@ export default function AppShell({ children }) {
           </nav>
         </div>
       </header>
+
+      {pendingOfflineFlights > 0 && (
+        <div className="mx-auto max-w-6xl px-4 pt-3">
+          <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            {pendingOfflineFlights} flight log(s) saved offline. They will upload automatically when
+            you are back online.
+          </p>
+        </div>
+      )}
 
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:pb-8">{children}</main>
 

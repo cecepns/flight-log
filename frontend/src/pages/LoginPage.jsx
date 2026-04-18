@@ -19,6 +19,10 @@ export default function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!navigator.onLine) {
+      toast.error("You need an internet connection to sign in.");
+      return;
+    }
     try {
       setSubmitting(true);
       await login(form.email, form.password);

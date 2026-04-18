@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
-import { Pencil, Search, Trash2 } from "lucide-react";
+import { FileDown, Pencil, Search, Trash2 } from "lucide-react";
 import api from "../api/client";
 import useDebounce from "../hooks/useDebounce";
+import { exportFlightToPdf } from "../utils/exportFlightPdf";
 
 export default function FlightsPage() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export default function FlightsPage() {
   const [page, setPage] = useState(1);
   const [result, setResult] = useState({ data: [], totalPages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
 
   const debouncedSearch = useDebounce(search, 500);
 
@@ -38,6 +40,19 @@ export default function FlightsPage() {
     setPage(1);
   }, [debouncedSearch]);
 
+  const exportFlightPdf = async (id) => {
+    try {
+      setExportingId(id);
+      const { data } = await api.get(`/flights/${id}`);
+      exportFlightToPdf(data);
+      toast.success("PDF downloaded");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not export flight PDF");
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   const deleteFlight = async (id) => {
     if (!window.confirm("Hapus flight ini?")) return;
     try {
@@ -53,11 +68,8 @@ export default function FlightsPage() {
 
   return (
     <section>
-      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="mb-5">
         <h1 className="text-2xl font-semibold">Flights</h1>
-        <Link to="/add" className="btn-primary w-full justify-center md:w-auto">
-          Tambah Flight
-        </Link>
       </div>
 
       <div className="relative mb-5">
@@ -113,12 +125,12 @@ export default function FlightsPage() {
               <p>
                 Departure:{" "}
                 {flight.departure_date
-                  ? dayjs(flight.departure_date).format("DD MMM YYYY")
+                  ? dayjs(flight.departure_date).format("DD MM YYYY")
                   : "-"}
               </p>
               <p>
                 Arrival:{" "}
-                {flight.arrival_date ? dayjs(flight.arrival_date).format("DD MMM YYYY") : "-"}
+                {flight.arrival_date ? dayjs(flight.arrival_date).format("DD MM YYYY") : "-"}
               </p>
               <p>Flying: {Number(flight.flying_hours || 0).toFixed(1)} hrs</p>
               <p>Rest: {Number(flight.rest_hours || 0).toFixed(1)} hrs</p>
@@ -127,10 +139,18 @@ export default function FlightsPage() {
             <p className="mt-2 text-sm text-text-soft">Crew: {flight.crew_names || "-"}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <button onClick={() => navigate(`/add?edit=${flight.id}`)} className="btn-ghost">
+              <button
+                type="button"
+                disabled={exportingId === flight.id}
+                onClick={() => exportFlightPdf(flight.id)}
+                className="btn-ghost"
+              >
+                <FileDown size={16} /> {exportingId === flight.id ? "Exporting…" : "Export PDF"}
+              </button>
+              <button type="button" onClick={() => navigate(`/add?edit=${flight.id}`)} className="btn-ghost">
                 <Pencil size={16} /> Edit
               </button>
-              <button onClick={() => deleteFlight(flight.id)} className="btn-danger">
+              <button type="button" onClick={() => deleteFlight(flight.id)} className="btn-danger">
                 <Trash2 size={16} /> Delete
               </button>
             </div>

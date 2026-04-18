@@ -5,7 +5,16 @@ import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import DatePicker from "react-datepicker";
 import api from "../api/client";
-import { crewNationalities, crewPositions, initialFlightForm } from "../constants";
+import {
+  airportIataCodes,
+  crewNationalities,
+  crewPositions,
+  initialFlightForm,
+} from "../constants";
+import {
+  enqueueOfflineFlight,
+  isNetworkLayerFailure,
+} from "../utils/offlineFlightQueue";
 
 const emptyCrew = { position: "", crew_name: "", nationality: "" };
 
@@ -57,7 +66,7 @@ export default function AddFlightPage() {
 
   const addCrew = () => {
     if (!crewForm.position || !crewForm.crew_name || !crewForm.nationality) {
-      toast.error("Lengkapi position, crew name, dan nationality");
+      toast.error("Please fill in position, crew name, and nationality.");
       return;
     }
     setCrew((prev) => [{ ...crewForm, id: Date.now() }, ...prev]);
@@ -72,8 +81,16 @@ export default function AddFlightPage() {
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!form.flight_number || !form.departure_date) {
-      toast.error("Flight Number dan Departure Date wajib diisi");
+    if (
+      !form.flight_number ||
+      !form.aircraft_type ||
+      !form.destination ||
+      !form.departure_date ||
+      !form.arrival_date
+    ) {
+      toast.error(
+        "Please enter flight number, aircraft type, destination, departure date, and arrival date.",
+      );
       return;
     }
 
@@ -83,18 +100,44 @@ export default function AddFlightPage() {
     payload.append("removePhotoIds", JSON.stringify(removePhotoIds));
     newPhotos.forEach((file) => payload.append("photos", file));
 
+    const queueOffline = () => {
+      if (newPhotos.length > 0) {
+        toast(
+          "New photos were not saved offline. You can attach them again after you reconnect.",
+          { duration: 4500 },
+        );
+      }
+      enqueueOfflineFlight({
+        form,
+        crew,
+        editId: editId ? Number(editId) : null,
+        removePhotoIds,
+      });
+      toast.success("Saved offline. It will sync to the server when you are online.");
+      navigate("/flights");
+    };
+
+    if (!navigator.onLine) {
+      queueOffline();
+      return;
+    }
+
     try {
       setLoading(true);
       if (editId) {
         await api.put(`/flights/${editId}`, payload);
-        toast.success("Flight berhasil diupdate");
+        toast.success("Flight updated successfully");
       } else {
         await api.post("/flights", payload);
-        toast.success("Flight berhasil ditambahkan");
+        toast.success("Flight added successfully");
       }
       navigate("/flights");
     } catch (error) {
-      toast.error(error.response?.data?.message || "Gagal menyimpan flight");
+      if (isNetworkLayerFailure(error)) {
+        queueOffline();
+        return;
+      }
+      toast.error(error.response?.data?.message || "Could not save flight");
     } finally {
       setLoading(false);
     }
@@ -103,37 +146,50 @@ export default function AddFlightPage() {
   return (
     <>
       <form className="space-y-5" onSubmit={submit}>
+        <datalist id="flight-log-airports">
+          {airportIataCodes.map((code) => (
+            <option key={code} value={code} />
+          ))}
+        </datalist>
+
         <h1 className="text-2xl font-semibold">{pageTitle}</h1>
 
-        <Section title="Flight Details">
-        <div className="grid gap-3 md:grid-cols-2">
+        <Section title="Flight Details" compact>
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Flight Number *"
+              placeholder="e.g. CX123"
+              value={form.flight_number}
+              onChange={(v) => updateField("flight_number", v)}
+            />
+            <Input
+              label="Aircraft Type *"
+              placeholder="e.g. A350"
+              value={form.aircraft_type}
+              onChange={(v) => updateField("aircraft_type", v)}
+            />
+          </div>
           <Input
-            label="Flight Number *"
-            value={form.flight_number}
-            onChange={(v) => updateField("flight_number", v)}
-          />
-          <Input
-            label="Aircraft Type"
-            value={form.aircraft_type}
-            onChange={(v) => updateField("aircraft_type", v)}
-          />
-          <Input
-            label="Destination"
-            className="md:col-span-2"
+            label="Destination *"
+            placeholder="e.g. CGK, SUB, LAX"
+            list="flight-log-airports"
             value={form.destination}
-            onChange={(v) => updateField("destination", v)}
+            onChange={(v) => updateField("destination", v.toUpperCase())}
           />
-          <DatePickerField
-            label="Departure Date *"
-            value={form.departure_date}
-            onChange={(v) => updateField("departure_date", v)}
-          />
-          <DatePickerField
-            label="Arrival Date"
-            value={form.arrival_date}
-            onChange={(v) => updateField("arrival_date", v)}
-          />
-          <label className="block md:col-span-2">
+          <div className="grid grid-cols-2 gap-2">
+            <DatePickerField
+              label="Departure Date *"
+              value={form.departure_date}
+              onChange={(v) => updateField("departure_date", v)}
+            />
+            <DatePickerField
+              label="Arrival Date *"
+              value={form.arrival_date}
+              onChange={(v) => updateField("arrival_date", v)}
+            />
+          </div>
+          <label className="block">
             <span className="label">Status</span>
             <select
               className="input"
@@ -147,46 +203,52 @@ export default function AddFlightPage() {
         </div>
         </Section>
 
-        <Section title="Time & Hours">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Input
-            type="time"
-            label="Est. Departure"
-            value={form.est_departure_time || ""}
-            onChange={(v) => updateField("est_departure_time", v)}
-          />
-          <Input
-            type="time"
-            label="Est. Arrival"
-            value={form.est_arrival_time || ""}
-            onChange={(v) => updateField("est_arrival_time", v)}
-          />
-          <Input
-            type="time"
-            label="Actual Departure"
-            value={form.actual_departure_time || ""}
-            onChange={(v) => updateField("actual_departure_time", v)}
-          />
-          <Input
-            type="time"
-            label="Actual Arrival"
-            value={form.actual_arrival_time || ""}
-            onChange={(v) => updateField("actual_arrival_time", v)}
-          />
-          <Input
-            type="number"
-            step="0.1"
-            label="Flying Hours"
-            value={form.flying_hours}
-            onChange={(v) => updateField("flying_hours", v)}
-          />
-          <Input
-            type="number"
-            step="0.1"
-            label="Rest Hours"
-            value={form.rest_hours}
-            onChange={(v) => updateField("rest_hours", v)}
-          />
+        <Section title="Time & Hours" compact>
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="time"
+              label="Est. Departure"
+              value={form.est_departure_time || ""}
+              onChange={(v) => updateField("est_departure_time", v)}
+            />
+            <Input
+              type="time"
+              label="Actual Departure"
+              value={form.actual_departure_time || ""}
+              onChange={(v) => updateField("actual_departure_time", v)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="time"
+              label="Est. Arrival"
+              value={form.est_arrival_time || ""}
+              onChange={(v) => updateField("est_arrival_time", v)}
+            />
+            <Input
+              type="time"
+              label="Actual Arrival"
+              value={form.actual_arrival_time || ""}
+              onChange={(v) => updateField("actual_arrival_time", v)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="number"
+              step="0.1"
+              label="Flying Hours"
+              value={form.flying_hours}
+              onChange={(v) => updateField("flying_hours", v)}
+            />
+            <Input
+              type="number"
+              step="0.1"
+              label="Rest Hours"
+              value={form.rest_hours}
+              onChange={(v) => updateField("rest_hours", v)}
+            />
+          </div>
         </div>
         </Section>
 
@@ -401,18 +463,31 @@ export default function AddFlightPage() {
   );
 }
 
-function Section({ title, children }) {
+function Section({ title, children, compact = false }) {
   return (
-    <section className="rounded-2xl border border-line-soft bg-bg-card p-4 md:p-5">
-      <h2 className="mb-3 text-lg font-semibold">{title}</h2>
+    <section
+      className={`rounded-2xl border border-line-soft bg-bg-card ${
+        compact ? "p-3 md:p-4" : "p-4 md:p-5"
+      }`}
+    >
+      <h2 className={`font-semibold ${compact ? "mb-2 text-base" : "mb-3 text-lg"}`}>{title}</h2>
       {children}
     </section>
   );
 }
 
-function Input({ label, value, onChange, type = "text", className = "", step }) {
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  className = "",
+  step,
+  placeholder,
+  list,
+}) {
   return (
-    <label className={`block ${className}`}>
+    <label className={`block min-w-0 ${className}`}>
       <span className="label">{label}</span>
       <input
         type={type}
@@ -420,6 +495,8 @@ function Input({ label, value, onChange, type = "text", className = "", step }) 
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         className="input"
+        placeholder={placeholder}
+        list={list || undefined}
       />
     </label>
   );
@@ -430,18 +507,18 @@ function DatePickerField({ label, value, onChange }) {
   const selectedDate = parsed && parsed.isValid() ? parsed.toDate() : null;
 
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="label">{label}</span>
       <DatePicker
         selected={selectedDate}
         onChange={(date) => {
           onChange(date ? dayjs(date).format("YYYY-MM-DD") : "");
         }}
-        dateFormat="yyyy-MM-dd"
-        placeholderText="YYYY-MM-DD"
+        dateFormat="dd MM yyyy"
+        placeholderText="DD MM YYYY"
         isClearable
-        className="input"
-        wrapperClassName="block"
+        className="input min-w-0"
+        wrapperClassName="block min-w-0"
       />
     </label>
   );

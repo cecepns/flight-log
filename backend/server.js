@@ -165,6 +165,19 @@ function normalizeCrewList(items) {
     );
 }
 
+function validateFlightRequiredFields(payload) {
+  if (
+    !payload.flight_number ||
+    !payload.departure_date ||
+    !payload.aircraft_type ||
+    !payload.destination ||
+    !payload.arrival_date
+  ) {
+    return "Flight number, aircraft type, destination, departure date, and arrival date are required.";
+  }
+  return null;
+}
+
 function normalizeFlightPayload(payload) {
   return {
     flight_number: payload.flight_number?.trim() || "",
@@ -391,10 +404,9 @@ app.post("/api/flights", authMiddleware, upload.array("photos", 10), async (req,
   const crew = normalizeCrewList(parseJsonField(req.body.crews, []));
   const payload = normalizeFlightPayload(rawFlight);
 
-  if (!payload.flight_number || !payload.departure_date) {
-    return res
-      .status(400)
-      .json({ message: "Flight number and departure date are required." });
+  const requiredError = validateFlightRequiredFields(payload);
+  if (requiredError) {
+    return res.status(400).json({ message: requiredError });
   }
 
   const conn = await pool.getConnection();
@@ -466,6 +478,11 @@ app.put("/api/flights/:id", authMiddleware, upload.array("photos", 10), async (r
   const crew = normalizeCrewList(parseJsonField(req.body.crews, []));
   const removePhotoIds = parseJsonField(req.body.removePhotoIds, []);
   const payload = normalizeFlightPayload(rawFlight);
+
+  const requiredError = validateFlightRequiredFields(payload);
+  if (requiredError) {
+    return res.status(400).json({ message: requiredError });
+  }
 
   const conn = await pool.getConnection();
   try {
