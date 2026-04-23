@@ -32,6 +32,10 @@ export function enqueueOfflineFlight({ form, crew, editId, removePhotoIds }) {
   return item;
 }
 
+export function dequeueOfflineFlight(localId) {
+  setOfflineQueue(getOfflineQueue().filter((item) => item.localId !== localId));
+}
+
 export function isNetworkLayerFailure(error) {
   if (!error || error.response) return false;
   if (error.code === "ECONNABORTED") return false;

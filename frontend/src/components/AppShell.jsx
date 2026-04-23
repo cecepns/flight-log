@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plane, PlaneTakeoff } from "lucide-react";
+import { Loader2, Plane, PlaneTakeoff, RefreshCw, WifiOff } from "lucide-react";
 import api from "../api/client";
 import BottomNav from "./BottomNav";
 import { useOfflineQueueLength } from "../hooks/useOfflineQueueLength";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { flushOfflineFlightQueue } from "../utils/offlineFlightQueue";
 
 const menus = [
@@ -16,19 +17,30 @@ const menus = [
 
 export default function AppShell({ children }) {
   const location = useLocation();
+  const isOnline = useOnlineStatus();
   const pendingOfflineFlights = useOfflineQueueLength();
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    const sync = async () => {
+  const syncNow = async () => {
+    if (!isOnline || syncing) return;
+    setSyncing(true);
+    try {
       const synced = await flushOfflineFlightQueue(api);
       if (synced > 0) {
         toast.success(`Synced ${synced} flight log(s) to the server.`);
       }
-    };
-    window.addEventListener("online", sync);
-    void sync();
-    return () => window.removeEventListener("online", sync);
-  }, []);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Auto-sync when coming back online
+  useEffect(() => {
+    if (isOnline) {
+      syncNow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline]);
 
   return (
     <div className="min-h-screen bg-bg-main text-slate-100">
@@ -44,32 +56,72 @@ export default function AppShell({ children }) {
             </div>
           </div>
 
-          <nav className="hidden items-center gap-1 rounded-xl border border-line-soft bg-bg-card px-2 py-1 md:flex">
-            {menus.map((menu) => (
-              <NavLink
-                key={menu.to}
-                to={menu.to}
-                className={({ isActive }) =>
-                  `rounded-lg px-4 py-2 text-sm ${
-                    isActive
-                      ? "bg-brand text-white"
-                      : "text-text-soft hover:text-slate-100"
-                  }`
-                }
-              >
-                {menu.label}
-              </NavLink>
-            ))}
-          </nav>
+          <div className="flex items-center gap-3">
+            {/* Online / offline indicator dot */}
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-400" : "bg-red-500"}`}
+              />
+              <span className="hidden text-xs text-text-soft sm:block">
+                {isOnline ? "Online" : "Offline"}
+              </span>
+            </div>
+
+            <nav className="hidden items-center gap-1 rounded-xl border border-line-soft bg-bg-card px-2 py-1 md:flex">
+              {menus.map((menu) => (
+                <NavLink
+                  key={menu.to}
+                  to={menu.to}
+                  className={({ isActive }) =>
+                    `rounded-lg px-4 py-2 text-sm ${
+                      isActive
+                        ? "bg-brand text-white"
+                        : "text-text-soft hover:text-slate-100"
+                    }`
+                  }
+                >
+                  {menu.label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
         </div>
       </header>
 
-      {pendingOfflineFlights > 0 && (
+      {/* Offline status banner */}
+      {!isOnline && (
         <div className="mx-auto max-w-6xl px-4 pt-3">
-          <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-            {pendingOfflineFlights} flight log(s) saved offline. They will upload automatically when
-            you are back online.
-          </p>
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            <WifiOff size={15} className="shrink-0" />
+            <span>
+              You are offline. New flights will be saved locally and synced automatically when you
+              reconnect.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Pending queue banner (only when online, so user can sync) */}
+      {isOnline && pendingOfflineFlights > 0 && (
+        <div className="mx-auto max-w-6xl px-4 pt-3">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            <span>
+              {pendingOfflineFlights} flight log(s) pending sync to the server.
+            </span>
+            <button
+              type="button"
+              onClick={syncNow}
+              disabled={syncing}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-400/15 px-3 py-1 text-xs font-medium text-amber-200 hover:bg-amber-400/25 disabled:opacity-60"
+            >
+              {syncing ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <RefreshCw size={13} />
+              )}
+              {syncing ? "Syncing…" : "Sync now"}
+            </button>
+          </div>
         </div>
       )}
 

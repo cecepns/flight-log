@@ -205,7 +205,7 @@ export default function AddFlightPage() {
 
         <Section title="Time & Hours" compact>
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <Input
               type="time"
               label="Est. Departure"
@@ -219,7 +219,7 @@ export default function AddFlightPage() {
               onChange={(v) => updateField("actual_departure_time", v)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <Input
               type="time"
               label="Est. Arrival"
@@ -233,7 +233,7 @@ export default function AddFlightPage() {
               onChange={(v) => updateField("actual_arrival_time", v)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <Input
               type="number"
               step="0.1"
